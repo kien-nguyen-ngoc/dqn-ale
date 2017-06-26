@@ -1,6 +1,5 @@
 package main
 
-import ()
 import (
 	"github.com/NOX73/go-neural"
 	"github.com/NOX73/go-neural/learn"

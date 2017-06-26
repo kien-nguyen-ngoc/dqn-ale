@@ -7,6 +7,11 @@ import (
 )
 
 func main() {
+
+
+
+	return
+
 	var name string
 	flag.StringVar(&name, "name", "", "game name")
 	flag.Parse()
