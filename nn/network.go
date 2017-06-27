@@ -12,29 +12,29 @@ type Network struct {
 	scope         *op.Scope
 	screen_height int64
 	screen_width  int64
-	action_size   int64
+	action_size   int32
 
 	// Layers of neural network, in tf Output type
-	input tf.Output
-	conv1 tf.Output
-	conv2 tf.Output
-	conv3 tf.Output
-	conv4 tf.Output
+	Input tf.Output
+	Conv1 tf.Output
+	Conv2 tf.Output
+	Conv3 tf.Output
+	Conv4 tf.Output
 
 	// function support deep-q-learning, in tf Output type
-	Qout tf.Output
-	predict tf.Output
-	updateModel tf.Output
+	Qout        tf.Output
+	Predict     tf.Output
+	UpdateModel tf.Output
 
 	// for compute loss
-	targetQ tf.Output
+	TargetQ tf.Output
 	actions tf.Output
 }
 
-func _init(scope *op.Scope, screen_height int64, screen_width int64, action_size int64) Network {
+func Init(scope *op.Scope, screen_height int64, screen_width int64, action_size int32) Network {
 	net := new(Network)
-	one := op.Const(scope.SubScope("conv2d"), []float32{1})
-	zero:= op.Const(scope.SubScope("conv2d"), []float32{0})
+	_one := op.Const(scope.SubScope("conv2d"), []float32{1})
+	_zero := op.Const(scope.SubScope("conv2d"), []float32{0})
 
 	// init variable for first layer
 	net.scope = scope
@@ -43,49 +43,55 @@ func _init(scope *op.Scope, screen_height int64, screen_width int64, action_size
 	net.action_size = action_size
 
 	// define layers of neural network
-	input := op.Placeholder(scope.SubScope("conv2d"), tf.Float, op.PlaceholderShape(tf.MakeShape(1, 3, 3, 1)))
-	net.input = input
-	net.conv1 = conv2d(net.scope, net.input, 32, []int64{screen_width, screen_height}, "conv2d")
-	net.conv2 = conv2d(net.scope, net.conv1, 64, []int64{screen_width, screen_height}, "conv2d")
-	net.conv3 = conv2d(net.scope, net.conv2, 64, []int64{screen_width, screen_height}, "conv2d")
-	net.conv4 = conv2d(net.scope, net.conv3, action_size, []int64{screen_width, screen_height}, "conv2d")
+	net.Input = op.Placeholder(net.scope.SubScope("conv2d"), tf.Float,
+		op.PlaceholderShape(tf.MakeShape(net.screen_height * net.screen_width)))
+
+	shape_input := op.Const(net.scope.SubScope("conv2d"),[]int32{1, int32(net.screen_height), int32(net.screen_width), 1})
+
+	input_reshape := op.Reshape(net.scope.SubScope("conv2d"), net.Input, shape_input)
+
+	net.Conv1 = conv2d(net.scope, input_reshape, []int32{3, 3, 1, 32}, []int64{1,4,4,1},"conv2d")
+	net.Conv2 = conv2d(net.scope, net.Conv1, []int32{3, 3, 32, 64}, []int64{1,3,3,1}, "conv2d")
+	net.Conv3 = conv2d(net.scope, net.Conv2, []int32{3, 3, 64, 128}, []int64{1,2,2,1}, "conv2d")
+	net.Conv4 = conv2d(net.scope, net.Conv3, []int32{3, 3, 128, net.action_size}, []int64{1,1,1,1}, "conv2d")
 
 	// compute advantage and value for duel network
-	split_dim := op.Const(scope.SubScope("conv2d"), []float32{3})
-	split := op.Split(scope, split_dim, net.conv4, 2)
+	split_dim := op.Const(net.scope.SubScope("conv2d"), []float32{1})
+	var split []tf.Output = op.Split(net.scope.SubScope("conv2d"), split_dim, net.Conv4, 2)
+
 	streamA := split[0]
 	streamV := split[1]
-	WA := xavier_init(net.scope, []int64{net.action_size / 2, net.action_size}, true)
-	WV := xavier_init(net.scope, []int64{net.action_size / 2, 1}, true)
-	advantage := op.MatMul(net.scope, streamA, WA)
-	value := op.MatMul(net.scope, streamV, WV)
+	WA := xavier_init(net.scope, []int32{net.action_size / 2, net.action_size}, true)
+	WV := xavier_init(net.scope, []int32{net.action_size / 2, 1}, true)
+	advantage := op.MatMul(net.scope.SubScope("conv2d"), streamA, WA)
+	value := op.MatMul(net.scope.SubScope("conv2d"), streamV, WV)
 	keep_dim := op.MeanKeepDims(true)
-	reduce_meanA := op.Mean(net.scope, advantage, one, keep_dim)
-	subtractA := op.Sub(net.scope, advantage, reduce_meanA)
+	reduce_meanA := op.Mean(net.scope.SubScope("conv2d"), advantage, _one, keep_dim)
+	subtractA := op.Sub(net.scope.SubScope("conv2d"), advantage, reduce_meanA)
 
-	Qout := op.Add(net.scope, value, subtractA)
+	Qout := op.Add(net.scope.SubScope("conv2d"), value, subtractA)
 	net.Qout = Qout
-	net.predict = op.ArgMax(net.scope, net.Qout, one)
+	net.Predict = op.ArgMax(net.scope.SubScope("conv2d"), net.Qout, _one)
 
-	targetQ := op.Placeholder(scope.SubScope("conv2d"), tf.Float, op.PlaceholderShape(tf.MakeShape()))
-	actions := op.Placeholder(scope.SubScope("conv2d"), tf.Int32, op.PlaceholderShape(tf.MakeShape()))
-	depth_action := op.Const(scope.SubScope("conv2d"), []int64{net.action_size})
-	actions_onehot := op.OneHot(net.scope, actions, depth_action, one, zero)
+	targetQ := op.Placeholder(net.scope.SubScope("conv2d"), tf.Float, op.PlaceholderShape(tf.MakeShape()))
+	actions := op.Placeholder(net.scope.SubScope("conv2d"), tf.Int32, op.PlaceholderShape(tf.MakeShape()))
+	depth_action := op.Const(net.scope.SubScope("conv2d"), []int32{net.action_size})
+	actions_onehot := op.OneHot(net.scope.SubScope("conv2d"), actions, depth_action, _one, _zero)
 	Q := op.Sum(net.scope, net.Qout, actions_onehot)
-	td_err := op.Sub(net.scope, targetQ, Q)
-	loss := op.Square(net.scope, td_err)
+	td_err := op.Sub(net.scope.SubScope("conv2d"), targetQ, Q)
+	loss := op.Square(net.scope.SubScope("conv2d"), td_err)
 
 	// get optimize loss
-	_ms := op.Const(scope.SubScope("conv2d"), []float32{1})
-	_mom := op.Const(scope.SubScope("conv2d"), []float32{0.0})
-	_lr := op.Const(scope.SubScope("conv2d"), []float32{0.0001})
-	_rho := op.Const(scope.SubScope("conv2d"), []float32{0.9})
-	_momentum := op.Const(scope.SubScope("conv2d"), []float32{0.0})
-	_esp := op.Const(scope.SubScope("conv2d"), []float32{float32(math.Exp(-10.0))})
-	_grad := op.Const(scope.SubScope("conv2d"), []float32{1})
+	_ms := op.Const(net.scope.SubScope("conv2d"), []float32{1})
+	_mom := op.Const(net.scope.SubScope("conv2d"), []float32{0.0})
+	_lr := op.Const(net.scope.SubScope("conv2d"), []float32{0.0001})
+	_rho := op.Const(net.scope.SubScope("conv2d"), []float32{0.9})
+	_momentum := op.Const(net.scope.SubScope("conv2d"), []float32{0.0})
+	_esp := op.Const(net.scope.SubScope("conv2d"), []float32{float32(math.Exp(-10.0))})
+	_grad := op.Const(net.scope.SubScope("conv2d"), []float32{1})
 
-	updateModel := op.ResourceApplyRMSProp(net.scope, loss, _ms, _mom, _lr, _rho, _momentum, _esp, _grad, op.ResourceApplyRMSPropUseLocking(false)).Output(1)
-	net.updateModel = updateModel
+	updateModel := op.ResourceApplyRMSProp(net.scope.SubScope("conv2d"), loss, _ms, _mom, _lr, _rho, _momentum, _esp, _grad, op.ResourceApplyRMSPropUseLocking(false)).Output(1)
+	net.UpdateModel = updateModel
 
 	return *net
 }
