@@ -94,15 +94,22 @@ func Init(scope *op.Scope, screen_height int64, screen_width int64, action_size 
 	loss := op.Square(net.scope.SubScope("conv2d"), td_err)
 
 	// get optimize loss
-	_ms := op.Const(net.scope.SubScope("conv2d"), float32(1))
+	_var_ := op.Stage(net.scope.SubScope("conv2d"), []tf.Output{loss}).Output(0)
+	_ms := op.Const(net.scope.SubScope("conv2d"), float32(0.0))
 	_mom := op.Const(net.scope.SubScope("conv2d"), float32(0.0))
+	_m :=
+	_v :=
+
 	_lr := op.Const(net.scope.SubScope("conv2d"), float32(0.0001))
-	_rho := op.Const(net.scope.SubScope("conv2d"), float32(0.9))
-	_momentum := op.Const(net.scope.SubScope("conv2d"), float32(0.0))
-	_esp := op.Const(net.scope.SubScope("conv2d"), float32(math.Exp(-10.0)))
+	_beta1 := op.Const(net.scope.SubScope("conv2d"), float32(0.9))
+	_beta2 := op.Const(net.scope.SubScope("conv2d"), float32(0.999))
+	_beta1_power := op.Const(net.scope.SubScope("conv2d"), float32(1.0))
+	_beta2_power := op.Const(net.scope.SubScope("conv2d"), float32(1.0))
+	_esp := op.Const(net.scope.SubScope("conv2d"), float32(math.Exp(-8.0)))
 	_grad := op.Const(net.scope.SubScope("conv2d"), float32(1))
 
-	updateModel := op.ResourceApplyRMSProp(net.scope.SubScope("conv2d"), loss, _ms, _mom, _lr, _rho, _momentum, _esp, _grad, op.ResourceApplyRMSPropUseLocking(false)).Output(1)
+
+	updateModel := op.ResourceApplyAdam(net.scope.SubScope("conv2d"), _var_, _m, _v, _beta1_power, _beta2_power, _lr, _beta1, _beta2, _esp, _grad, op.ResourceApplyAdamUseLocking(false)).Output(1)
 	net.UpdateModel = updateModel
 
 	return *net

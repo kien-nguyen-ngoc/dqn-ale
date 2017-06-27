@@ -44,3 +44,13 @@ func conv2d(scope *op.Scope, input tf.Output, filter []int32, strides []int64, s
 	conv2d := op.Tanh(scope.SubScope(scope_name), conv)
 	return conv2d
 }
+
+func buildAdamParam(loss tf.Output) (tf.Output, tf.Output,tf.Output) {
+	var var_ tf.Output
+	var m tf.Output
+	var t tf.Output
+
+
+
+	return var_, m,t
+}
