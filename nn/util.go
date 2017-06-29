@@ -45,6 +45,6 @@ func conv2d(scope *op.Scope, input tf.Output, filter []int32, strides []int64, s
 	return conv2d
 }
 
-func max(slice []int64)  {
+func max(slice []int64) {
 
 }

@@ -9,8 +9,9 @@ import (
 )
 
 func main() {
+	screen := int64(64)
 	root := op.NewScope()
-	net := nn.Init(root, 28, 28, 6)
+	net := nn.Init(root, screen, screen, 6, 1024)
 
 	graph, err := root.Finalize()
 	if err != nil {
@@ -22,23 +23,14 @@ func main() {
 		panic(err)
 	}
 
-	array := make([]float32, 28*28)
-	for i:=0; i<28*28; i++ {
+	array := make([]float32, screen*screen)
+	for i:=0; i<int(screen*screen); i++ {
 		array[i] = rand.Float32()
 	}
 	input, err := tf.NewTensor(array)
 	if err != nil {
 		panic(nil)
 	}
-	//results, err := session.Run(map[tf.Output]*tf.Tensor{
-	//	net.Input: input,
-	//}, []tf.Output{net.Qout}, nil)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//for _, result := range results {
-	//	fmt.Println(result.Shape())
-	//}
 
 	target,err := tf.NewTensor(float32(1))
 	if err != nil {
@@ -48,15 +40,29 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	// run init tf.Variable operation
 	results,err := session.Run(map[tf.Output]*tf.Tensor{
 		net.Input: input,
 		net.TargetQ: target,
 		net.Actions: act,
-	}, []tf.Output{net.Test}, []*tf.Operation{net.Var})
+	}, nil, []*tf.Operation{net.Init_var, net.Init_m, net.Init_v})
+	if err != nil {
+		panic(err)
+	}
+
+	// execute program
+	results,err = session.Run(map[tf.Output]*tf.Tensor{
+		net.Input: input,
+		net.TargetQ: target,
+		net.Actions: act,
+	}, []tf.Output{net.Conv4}, nil)
 	if err != nil {
 		panic(err)
 	}
 	for _, result := range results {
-		fmt.Println(result.Value())
+		fmt.Println(result.Shape())
 	}
+
+
 }
